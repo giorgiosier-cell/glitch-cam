@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Câmara Glitch Digital</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        #glitchCanvas {
+            max-width: 100%;
+            max-height: 80vh;
+            background-color: #111;
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.2);
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button {
+            background: transparent;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 16px;
+            text-transform: uppercase;
+            transition: all 0.1s;
+        }
+        button:hover, button.active {
+            background: #0f0;
+            color: #000;
+        }
+        /* Esconder o elemento de vídeo original, pois vamos desenhá-lo no canvas */
+        video {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <video id="videoElement" autoplay playsinline></video>
+    <canvas id="glitchCanvas"></canvas>
+
+    <div class="controls">
+        <button onclick="setMode(1)" id="btn1" class="active">1: Deslocação RGB</button>
+        <button onclick="setMode(2)" id="btn2">2: Corrupção Tóxica</button>
+        <button onclick="setMode(3)" id="btn3">3: Fragmentação</button>
+    </div>
+
+    <script>
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('glitchCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        let currentMode = 1;
+        let animationId;
+
+        // Função para mudar o modo
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn' + mode).classList.add('active');
+        }
+
+        // Aceder à câmara do utilizador
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+            .then(stream => {
+                video.srcObject = stream;
+                video.play();
+                // Esperar que o vídeo carregue metadados para ajustar o canvas
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    applyGlitch();
+                };
+            })
+            .catch(err => {
+                console.error("Erro ao aceder à câmara: ", err);
+                alert("Por favor, permite o acesso à câmara para ver o efeito.");
+            });
+
+        // Loop principal de renderização
+        function applyGlitch() {
+            // Desenhar o frame atual do vídeo no canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Obter os píxeis para manipulação (Modo 1 e 2)
+            if (currentMode === 1 || currentMode === 2) {
+                let frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                let data = frameData.data;
+
+                if (currentMode === 1) {
+                    // Modo 1: Deslocação Cromática (RGB Shift)
+                    for (let i = 0; i < data.length; i += 4) {
+                        // Deslocar o canal vermelho (R) alguns píxeis para a frente
+                        if (i + 20 < data.length) {
+                            data[i] = data[i + 20]; 
+                        }
+                    }
+                } 
+                else if (currentMode === 2) {
+                    // Modo 2: Corrupção Tóxica (Inspiração de cores saturadas/inversão)
+                    for (let i = 0; i < data.length; i += 4) {
+                        // Manipulação matemática agressiva das cores
+                        data[i] = (data[i] * 2.5) % 255;       // R: Estourar os vermelhos
+                        data[i + 1] = 255 - data[i + 1];       // G: Inverter os verdes
+                        data[i + 2] = (data[i + 2] + 100) % 255; // B: Forçar tons azuis/magenta
+                    }
+                }
+                // Colocar os píxeis alterados de volta no canvas
+                ctx.putImageData(frameData, 0, 0);
+            }
+
+            // Modo 3: Fragmentação (Tearing/Slicing) - Feito manipulando o canvas diretamente
+            if (currentMode === 3) {
+                // Desenhar a imagem normal primeiro
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Aplicar cortes horizontais aleatórios
+                const numSlices = Math.floor(Math.random() * 10) + 5;
+                for (let i = 0; i < numSlices; i++) {
+                    if (Math.random() > 0.5) {
+                        const sliceY = Math.random() * canvas.height;
+                        const sliceHeight = Math.random() * 50 + 10;
+                        const xOffset = (Math.random() - 0.5) * 80; // Deslocamento horizontal
+                        
+                        // Copiar e colar a fatia deslocada
+                        ctx.drawImage(
+                            canvas, 
+                            0, sliceY, canvas.width, sliceHeight, // Fonte
+                            xOffset, sliceY, canvas.width, sliceHeight // Destino
+                        );
+                    }
+                }
+                
+                // Adicionar um pouco de ruído magenta/verde aleatório
+                ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255, 0, 255, 0.2)' : 'rgba(0, 255, 0, 0.2)';
+                ctx.fillRect(0, Math.random() * canvas.height, canvas.width, Math.random() * 100);
+            }
+
+            // Chamar o próximo frame
+            animationId = requestAnimationFrame(applyGlitch);
+        }
+    </script>
+</body>
+</html>
