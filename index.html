@@ -2,63 +2,103 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Câmara Glitch Digital</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Glitch Cam Pro</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #000;
-            color: #0f0;
-            font-family: 'Courier New', Courier, monospace;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-        }
-        #glitchCanvas {
-            max-width: 100%;
-            max-height: 80vh;
-            background-color: #111;
-            box-shadow: 0 0 20px rgba(255, 0, 255, 0.2);
-        }
-        .controls {
-            margin-top: 20px;
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        button {
-            background: transparent;
-            color: #0f0;
-            border: 1px solid #0f0;
-            padding: 10px 20px;
-            cursor: pointer;
-            font-size: 16px;
-            text-transform: uppercase;
-            transition: all 0.1s;
-        }
-        button:hover, button.active {
-            background: #0f0;
-            color: #000;
-        }
-        /* Esconder o elemento de vídeo original, pois vamos desenhá-lo no canvas */
-        video {
-            display: none;
-        }
+        /* Reset e layout base */
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+        body { background-color: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
+        
+        /* Ecrã de Início (Necessário para ativar o Fullscreen e Câmara no Mobile) */
+        #startScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+        #startBtn { padding: 15px 40px; font-size: 20px; border-radius: 30px; border: 2px solid #fff; background: transparent; color: #fff; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; }
+        
+        /* O Canvas que ocupa o ecrã todo */
+        #glitchCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        video { display: none; } /* Escondido, serve só de fonte */
+
+        /* INTERFACE DA CÂMARA */
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px 0; }
+        
+        /* Topo: Botão de Settings */
+        .top-bar { display: flex; justify-content: flex-end; padding: 0 20px; pointer-events: auto; }
+        #settingsBtn { background: rgba(0,0,0,0.5); border: none; font-size: 24px; padding: 10px; border-radius: 50%; cursor: pointer; text-shadow: 0 0 5px rgba(255,255,255,0.5); }
+
+        /* Fundo: Carrossel e Obturador */
+        .bottom-bar { display: flex; flex-direction: column; align-items: center; pointer-events: auto; padding-bottom: 20px; }
+        
+        /* Carrossel estilo Snapchat */
+        .carousel-container { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; width: 100%; padding: 10px 50%; scrollbar-width: none; margin-bottom: 20px; gap: 20px; }
+        .carousel-container::-webkit-scrollbar { display: none; }
+        .filter-node { scroll-snap-align: center; width: 60px; height: 60px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.5); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; text-transform: uppercase; cursor: pointer; transition: 0.3s; flex-shrink: 0; text-shadow: 1px 1px 2px #000; background: rgba(0,0,0,0.2); }
+        .filter-node.active { border-color: #fff; transform: scale(1.2); background: rgba(255,255,255,0.2); }
+
+        /* Botão de disparo (Obturador) */
+        .shutter-btn { width: 70px; height: 70px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; cursor: pointer; }
+        .shutter-btn-inner { width: 50px; height: 50px; border-radius: 50%; background: #fff; transition: 0.1s; }
+        .shutter-btn:active .shutter-btn-inner { transform: scale(0.9); background: #ddd; }
+
+        /* PAINEL DE SETTINGS (Roda Dentada) */
+        #settingsPanel { position: absolute; top: 0; right: -100%; width: 250px; height: 100%; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 50; transition: right 0.3s ease; padding: 20px; pointer-events: auto; box-shadow: -5px 0 15px rgba(0,0,0,0.5); }
+        #settingsPanel.open { right: 0; }
+        .settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        #closeSettings { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; }
+        .slider-group { margin-bottom: 25px; }
+        .slider-group label { display: block; margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #aaa; }
+        input[type=range] { width: 100%; accent-color: #fff; }
     </style>
 </head>
 <body>
 
+    <!-- Ecrã Inicial para desbloquear permissões -->
+    <div id="startScreen">
+        <button id="startBtn">Iniciar Câmara</button>
+    </div>
+
+    <!-- Elementos de Vídeo e Canvas -->
     <video id="videoElement" autoplay playsinline></video>
     <canvas id="glitchCanvas"></canvas>
 
-    <div class="controls">
-        <button onclick="setMode(1)" id="btn1" class="active">1: Deslocação RGB</button>
-        <button onclick="setMode(2)" id="btn2">2: Corrupção Tóxica</button>
-        <button onclick="setMode(3)" id="btn3">3: Fragmentação</button>
+    <!-- UI Overlay (Interface de Câmara) -->
+    <div class="ui-layer" id="uiLayer" style="display:none;">
+        <div class="top-bar">
+            <button id="settingsBtn">⚙️</button>
+        </div>
+
+        <div class="bottom-bar">
+            <div class="carousel-container" id="carousel">
+                <div class="filter-node active" onclick="setMode(1, this)">RGB</div>
+                <div class="filter-node" onclick="setMode(2, this)">TOXIC</div>
+                <div class="filter-node" onclick="setMode(3, this)">TEAR</div>
+            </div>
+            
+            <div class="shutter-btn">
+                <div class="shutter-btn-inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Painel de Definições -->
+    <div id="settingsPanel">
+        <div class="settings-header">
+            <h3>Definições</h3>
+            <button id="closeSettings">✕</button>
+        </div>
+        
+        <div class="slider-group">
+            <label>Força do Erro (Glitch)</label>
+            <input type="range" id="glitchSlider" min="0" max="100" value="50">
+        </div>
+        
+        <div class="slider-group">
+            <label>Grão Anos 30</label>
+            <input type="range" id="grainSlider" min="0" max="100" value="40">
+        </div>
+        
+        <div class="slider-group">
+            <label>Efeito VHS / Linhas</label>
+            <input type="range" id="vhsSlider" min="0" max="100" value="60">
+        </div>
     </div>
 
     <script>
@@ -66,93 +106,164 @@
         const canvas = document.getElementById('glitchCanvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         
+        // Elementos UI
+        const startBtn = document.getElementById('startBtn');
+        const startScreen = document.getElementById('startScreen');
+        const uiLayer = document.getElementById('uiLayer');
+        const settingsBtn = document.getElementById('settingsBtn');
+        const closeSettings = document.getElementById('closeSettings');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const carousel = document.getElementById('carousel');
+
+        // Sliders
+        const glitchSlider = document.getElementById('glitchSlider');
+        const grainSlider = document.getElementById('grainSlider');
+        const vhsSlider = document.getElementById('vhsSlider');
+
         let currentMode = 1;
         let animationId;
+        
+        // Gerar ruído base (Grão) uma única vez na memória para não quebrar a performance do telemóvel
+        const noiseCanvas = document.createElement('canvas');
+        noiseCanvas.width = 500; 
+        noiseCanvas.height = 500;
+        const noiseCtx = noiseCanvas.getContext('2d');
+        const noiseData = noiseCtx.createImageData(500, 500);
+        for(let i = 0; i < noiseData.data.length; i += 4) {
+            let val = Math.random() * 255; // Píxeis a preto e branco
+            noiseData.data[i] = val; noiseData.data[i+1] = val; noiseData.data[i+2] = val;
+            noiseData.data[i+3] = 255;
+        }
+        noiseCtx.putImageData(noiseData, 0, 0);
 
-        // Função para mudar o modo
-        function setMode(mode) {
+        // UI Interactions
+        settingsBtn.addEventListener('click', () => settingsPanel.classList.add('open'));
+        closeSettings.addEventListener('click', () => settingsPanel.classList.remove('open'));
+
+        // Função do Carrossel (Muda o estilo visual das bolas)
+        function setMode(mode, element) {
             currentMode = mode;
-            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
-            document.getElementById('btn' + mode).classList.add('active');
+            document.querySelectorAll('.filter-node').forEach(n => n.classList.remove('active'));
+            element.classList.add('active');
+            
+            // Centrar o elemento clicado no scroll
+            element.scrollIntoView({ behavior: 'smooth', inline: 'center' });
         }
 
-        // Aceder à câmara do utilizador
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-            .then(stream => {
-                video.srcObject = stream;
-                video.play();
-                // Esperar que o vídeo carregue metadados para ajustar o canvas
-                video.onloadedmetadata = () => {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    applyGlitch();
-                };
-            })
-            .catch(err => {
-                console.error("Erro ao aceder à câmara: ", err);
-                alert("Por favor, permite o acesso à câmara para ver o efeito.");
-            });
+        // Iniciar tudo (Fullscreen + Câmara)
+        startBtn.addEventListener('click', () => {
+            // Tentar entrar em Fullscreen
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(err => console.log(err));
+            }
 
-        // Loop principal de renderização
+            // Iniciar Câmara
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.play();
+                    
+                    startScreen.style.display = 'none'; // Esconder ecrã inicial
+                    uiLayer.style.display = 'flex';     // Mostrar UI da câmara
+
+                    // Redimensionar canvas quando o vídeo carregar
+                    video.onloadedmetadata = () => {
+                        resizeCanvas();
+                        applyGlitch();
+                    };
+                })
+                .catch(err => alert("Erro na câmara: " + err));
+        });
+
+        // Garantir que o canvas ocupa o ecrã todo independentemente da orientação
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // Função para desenhar o vídeo a cobrir o ecrã inteiro (estilo object-fit: cover)
+        function drawVideoCover() {
+            const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
+            const x = (canvas.width / 2) - (video.videoWidth / 2) * scale;
+            const y = (canvas.height / 2) - (video.videoHeight / 2) * scale;
+            ctx.drawImage(video, x, y, video.videoWidth * scale, video.videoHeight * scale);
+        }
+
+        // LOOP PRINCIPAL DE RENDERIZAÇÃO
         function applyGlitch() {
-            // Desenhar o frame atual do vídeo no canvas
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Obter os píxeis para manipulação (Modo 1 e 2)
+            // Desenhar vídeo base a cobrir o ecrã
+            drawVideoCover();
+
+            let glitchVal = glitchSlider.value / 100;
+            let grainVal = grainSlider.value / 100;
+            let vhsVal = vhsSlider.value / 100;
+
+            // MANIPULAÇÃO DE PIXEIS (Modos 1 e 2)
             if (currentMode === 1 || currentMode === 2) {
                 let frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 let data = frameData.data;
 
                 if (currentMode === 1) {
-                    // Modo 1: Deslocação Cromática (RGB Shift)
+                    // MODO 1: Deslocação RGB controlada pelo Slider
+                    let shiftAmount = Math.floor(glitchVal * 50) * 4; // Quanto maior o slider, mais desloca
                     for (let i = 0; i < data.length; i += 4) {
-                        // Deslocar o canal vermelho (R) alguns píxeis para a frente
-                        if (i + 20 < data.length) {
-                            data[i] = data[i + 20]; 
+                        if (i + shiftAmount < data.length) {
+                            data[i] = data[i + shiftAmount]; // Desloca Vermelho
                         }
                     }
                 } 
                 else if (currentMode === 2) {
-                    // Modo 2: Corrupção Tóxica (Inspiração de cores saturadas/inversão)
+                    // MODO 2: Tóxico controlado pelo Slider
                     for (let i = 0; i < data.length; i += 4) {
-                        // Manipulação matemática agressiva das cores
-                        data[i] = (data[i] * 2.5) % 255;       // R: Estourar os vermelhos
-                        data[i + 1] = 255 - data[i + 1];       // G: Inverter os verdes
-                        data[i + 2] = (data[i + 2] + 100) % 255; // B: Forçar tons azuis/magenta
+                        // Intensidade da alteração baseada no slider
+                        data[i] = Math.min(255, data[i] + (data[i] * glitchVal * 2)); 
+                        data[i + 1] = 255 - (data[i + 1] * glitchVal); 
+                        data[i + 2] = (data[i + 2] + (100 * glitchVal)) % 255;
                     }
                 }
-                // Colocar os píxeis alterados de volta no canvas
                 ctx.putImageData(frameData, 0, 0);
             }
 
-            // Modo 3: Fragmentação (Tearing/Slicing) - Feito manipulando o canvas diretamente
-            if (currentMode === 3) {
-                // Desenhar a imagem normal primeiro
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                // Aplicar cortes horizontais aleatórios
-                const numSlices = Math.floor(Math.random() * 10) + 5;
+            // MODO 3: Fragmentação (Tear) controlada pelo Slider
+            if (currentMode === 3 && glitchVal > 0) {
+                const numSlices = Math.floor(Math.random() * (20 * glitchVal));
                 for (let i = 0; i < numSlices; i++) {
-                    if (Math.random() > 0.5) {
-                        const sliceY = Math.random() * canvas.height;
-                        const sliceHeight = Math.random() * 50 + 10;
-                        const xOffset = (Math.random() - 0.5) * 80; // Deslocamento horizontal
-                        
-                        // Copiar e colar a fatia deslocada
-                        ctx.drawImage(
-                            canvas, 
-                            0, sliceY, canvas.width, sliceHeight, // Fonte
-                            xOffset, sliceY, canvas.width, sliceHeight // Destino
-                        );
-                    }
+                    const sliceY = Math.random() * canvas.height;
+                    const sliceHeight = Math.random() * 50 * glitchVal + 5;
+                    const xOffset = (Math.random() - 0.5) * 150 * glitchVal;
+                    
+                    ctx.drawImage(canvas, 0, sliceY, canvas.width, sliceHeight, xOffset, sliceY, canvas.width, sliceHeight);
                 }
-                
-                // Adicionar um pouco de ruído magenta/verde aleatório
-                ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255, 0, 255, 0.2)' : 'rgba(0, 255, 0, 0.2)';
-                ctx.fillRect(0, Math.random() * canvas.height, canvas.width, Math.random() * 100);
             }
 
-            // Chamar o próximo frame
+            // APLICAR GRÃO ANOS 30 (Sempre ativo se o slider for > 0)
+            if (grainVal > 0) {
+                ctx.globalAlpha = grainVal * 0.4; // max 40% de opacidade para não cegar a imagem
+                ctx.globalCompositeOperation = 'overlay'; // Mistura a preto/branco mantendo contraste
+                // Desenhar parte aleatória do ruído para dar sensação de movimento de película
+                let rX = Math.random() * 100;
+                let rY = Math.random() * 100;
+                ctx.drawImage(noiseCanvas, rX, rY, 400, 400, 0, 0, canvas.width, canvas.height);
+                // Reset blend mode
+                ctx.globalAlpha = 1.0;
+                ctx.globalCompositeOperation = 'source-over';
+            }
+
+            // APLICAR VHS E SCREEN LINES (Sempre ativo se o slider for > 0)
+            if (vhsVal > 0) {
+                ctx.fillStyle = `rgba(0, 0, 0, ${vhsVal * 0.3})`; // Linhas pretas semitransparentes
+                for (let y = 0; y < canvas.height; y += 4) {
+                    ctx.fillRect(0, y, canvas.width, Math.max(1, vhsVal * 2));
+                }
+
+                // Efeito de "salto" de tracking de VHS no fundo do ecrã ocasionalmente
+                if (Math.random() < (0.05 * vhsVal)) {
+                    let glitchY = canvas.height - (Math.random() * 100);
+                    ctx.drawImage(canvas, 0, glitchY, canvas.width, 50, (Math.random() - 0.5) * 20, glitchY, canvas.width, 50);
+                }
+            }
+
             animationId = requestAnimationFrame(applyGlitch);
         }
     </script>
