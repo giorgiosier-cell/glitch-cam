@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Glitch Cam Pro - Hallucination V3</title>
+    <title>Glitch Cam Pro - Pure Hardware Corruption</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
         body { background-color: #000; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
@@ -29,7 +29,7 @@
         .shutter-btn-inner { width: 50px; height: 50px; border-radius: 50%; background: #fff; transition: 0.1s; }
         .shutter-btn:active .shutter-btn-inner { transform: scale(0.9); background: #ddd; }
         
-        #flash { position: absolute; top:0; left:0; width: 100%; height: 100%; background: white; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.1s; }
+        #shutterFlash { position: absolute; top:0; left:0; width: 100%; height: 100%; background: white; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.1s; }
 
         #settingsPanel { position: absolute; top: 0; right: -100%; width: 250px; height: 100%; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 50; transition: right 0.3s ease; padding: 20px; pointer-events: auto; }
         #settingsPanel.open { right: 0; }
@@ -48,7 +48,7 @@
 
     <video id="videoElement" autoplay playsinline></video>
     <canvas id="glitchCanvas"></canvas>
-    <div id="flash"></div>
+    <div id="shutterFlash"></div>
 
     <div class="ui-layer" id="uiLayer" style="display:none;">
         <div class="top-bar">
@@ -73,10 +73,10 @@
             <h3>Definições</h3>
             <button id="closeSettings">✕</button>
         </div>
-        <div class="slider-group"><label>Intensidade Total</label><input type="range" id="glitchSlider" min="0" max="100" value="75"></div>
-        <div class="slider-group"><label>Posterizar</label><input type="range" id="posterizeSlider" min="0" max="100" value="40"></div>
-        <div class="slider-group"><label>Grão Anos 30</label><input type="range" id="grainSlider" min="0" max="100" value="35"></div>
-        <div class="slider-group"><label>VHS Lines</label><input type="range" id="vhsSlider" min="0" max="100" value="50"></div>
+        <div class="slider-group"><label>Intensidade Total</label><input type="range" id="glitchSlider" min="0" max="100" value="80"></div>
+        <div class="slider-group"><label>Posterizar</label><input type="range" id="posterizeSlider" min="0" max="100" value="35"></div>
+        <div class="slider-group"><label>Grão Anos 30</label><input type="range" id="grainSlider" min="0" max="100" value="30"></div>
+        <div class="slider-group"><label>VHS Lines</label><input type="range" id="vhsSlider" min="0" max="100" value="40"></div>
     </div>
 
     <script>
@@ -88,14 +88,23 @@
         const startScreen = document.getElementById('startScreen');
         const uiLayer = document.getElementById('uiLayer');
         const shutterBtn = document.getElementById('shutterBtn');
-        const flashScreen = document.getElementById('flash');
+        const shutterFlash = document.getElementById('shutterFlash');
         const settingsPanel = document.getElementById('settingsPanel');
         
         let layers = { rgb: true, toxic: true, tear: true };
         let scanY = 0;
+        let dripY = 0; // Controla a descida da trama verde/magenta
         let organicScanTimer = 0;
         let verticalLines = [];
-        let frozenSlices = []; // Guarda as tiras congeladas temporariamente
+        
+        // Sistemas de Freeze Expandidos
+        let frozenSlices = []; 
+        let frozenRects = []; // Guarda os 3 retângulos espaçados
+
+        // Timers de Flashes com duração aleatória
+        let flashEndTime = 0;
+        let flashColor = '#fff';
+        let blackNoiseEndTime = 0;
 
         document.getElementById('settingsBtn').addEventListener('click', () => settingsPanel.classList.add('open'));
         document.getElementById('closeSettings').addEventListener('click', () => settingsPanel.classList.remove('open'));
@@ -130,26 +139,26 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             
-            // Gerar apenas 6 linhas verticais (Mais limpo, cumprindo o pedido)
+            // Apenas 4 linhas verticais lentas puras
             verticalLines = [];
-            for(let i=0; i<6; i++) {
-                let thickness = Math.random() * 45 + 5;
+            for(let i=0; i<4; i++) {
+                let thickness = Math.random() * 40 + 10;
                 verticalLines.push({
                     x: Math.random() * canvas.width,
                     thickness: thickness,
-                    speed: 12 / thickness, // Mais espessas movem-se muito mais devagar
-                    color: randomColor()
+                    speed: 8 / thickness,
+                    color: Math.random() > 0.5 ? '#FF00FF' : '#00FF00'
                 });
             }
         }
         window.addEventListener('resize', resizeCanvas);
 
         shutterBtn.addEventListener('click', () => {
-            flashScreen.style.opacity = 1;
-            setTimeout(() => { flashScreen.style.opacity = 0; }, 150);
+            shutterFlash.style.opacity = 1;
+            setTimeout(() => { shutterFlash.style.opacity = 0; }, 150);
             const dataURL = canvas.toDataURL('image/jpeg', 0.9);
             const link = document.createElement('a');
-            link.download = `glitch_art_${Date.now()}.jpg`;
+            link.download = `glitch_cam_${Date.now()}.jpg`;
             link.href = dataURL;
             link.click();
         });
@@ -162,7 +171,7 @@
         }
 
         function randomColor() {
-            const colors = ['#00FF00', '#00FFFF', '#FF0000', '#0000FF', '#FFFFFF', '#FFFF00'];
+            const colors = ['#00FF00', '#FF00FF', '#00FFFF', '#FF0000', '#0000FF', '#FFFF00'];
             return colors[Math.floor(Math.random() * colors.length)];
         }
 
@@ -172,10 +181,10 @@
             let grainVal = document.getElementById('grainSlider').value / 100;
             let vhsVal = document.getElementById('vhsSlider').value / 100;
 
-            // FEEDBACK LOOP
+            // FEEDBACK LOOP CONSTITUINTE
             ctx.globalAlpha = 0.85; 
             if (Math.random() > 0.75) {
-                ctx.drawImage(canvas, -8, -8, canvas.width + 16, canvas.height + 16);
+                ctx.drawImage(canvas, -6, -6, canvas.width + 12, canvas.height + 12);
             }
             ctx.globalAlpha = 1.0;
             
@@ -183,34 +192,26 @@
                 drawVideoCover();
             }
 
-            // PIXEL MANIPULATION (RGB, TOXIC E POSTERIZE)
+            // CONTROLO DE PIXEIS (RGB, TOXIC, POSTERIZE)
             if (layers.rgb || layers.toxic || posterizeVal > 0) {
                 let frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 let data = frameData.data;
 
-                // 1. RGB SHIFT
                 if (layers.rgb) {
-                    let shiftAmount = Math.floor(glitchVal * 40) * 4;
+                    let shiftAmount = Math.floor(glitchVal * 35) * 4;
                     for (let i = 0; i < data.length; i += 12) { 
-                        if (i + shiftAmount < data.length) {
-                            data[i] = data[i + shiftAmount];
-                        }
+                        if (i + shiftAmount < data.length) data[i] = data[i + shiftAmount];
                     }
                 } 
-                
-                // 2. TOXIC COLOR
                 if (layers.toxic) {
                     for (let i = 0; i < data.length; i += 4) {
                         data[i] = (data[i] + (data[i + 1] * glitchVal)) % 255; 
                         data[i + 1] = 255 - data[i + 1]; 
-                        data[i + 2] = (data[i + 2] * 1.8) % 255; 
+                        data[i + 2] = (data[i + 2] * 1.6) % 255; 
                     }
                 }
-
-                // EFEITO POSTERIZE ADICIONADO (Controlável via Slider)
                 if (posterizeVal > 0) {
-                    // Mapeia o slider de 16 níveis de cor até apenas 2 níveis (compressão máxima)
-                    let levels = Math.max(2, Math.floor(16 - (posterizeVal * 14)));
+                    let levels = Math.max(2, Math.floor(16 - (posterizeVal * 13)));
                     for (let i = 0; i < data.length; i += 4) {
                         data[i] = Math.round(data[i] / 255 * levels) * (255 / levels);
                         data[i + 1] = Math.round(data[i + 1] / 255 * levels) * (255 / levels);
@@ -220,106 +221,147 @@
                 ctx.putImageData(frameData, 0, 0);
             }
 
-            // TEAR FRAG
+            // 1. TRAMA DE PIXEIS ESCORRIDOS MAGENTA E VERDE (Loop Vertical Longo)
+            dripY += 6 + (glitchVal * 10);
+            if (dripY > canvas.height) dripY = -300;
+            
+            if (glitchVal > 0.1) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.globalAlpha = 0.7 * glitchVal;
+                for (let x = 0; x < canvas.width; x += 6) {
+                    if (Math.sin(x + dripY) > 0.2) { // Cria padrões pseudo-orgânicos em linhas
+                        ctx.fillStyle = Math.random() > 0.5 ? '#FF00FF' : '#00FF00';
+                        let dripHeight = 100 + Math.random() * 250;
+                        ctx.fillRect(x, dripY, 3, dripHeight);
+                    }
+                }
+                ctx.restore();
+            }
+
+            // 2. LINHAS DE PIXEIS PRETOS NA HORIZONTAL
+            if (Math.random() < 0.4 * glitchVal) {
+                ctx.fillStyle = '#000000';
+                let numLines = Math.floor(2 + Math.random() * 6);
+                for(let l=0; l<numLines; l++) {
+                    ctx.fillRect(0, Math.random() * canvas.height, canvas.width, 1 + Math.floor(Math.random() * 3));
+                }
+            }
+
+            // TEAR FRAG DE FORMA BASE
             if (layers.tear && glitchVal > 0) {
-                const numSlices = Math.floor(Math.random() * 25 * glitchVal);
+                const numSlices = Math.floor(Math.random() * 15 * glitchVal);
                 for (let i = 0; i < numSlices; i++) {
                     const sliceY = Math.random() * canvas.height;
-                    const sliceHeight = Math.random() * 40;
-                    const xOffset = (Math.random() - 0.5) * 150 * glitchVal;
+                    const sliceHeight = Math.random() * 30;
+                    const xOffset = (Math.random() - 0.5) * 120 * glitchVal;
                     ctx.drawImage(canvas, 0, sliceY, canvas.width, sliceHeight, xOffset, sliceY, canvas.width, sliceHeight);
                 }
             }
 
-            // LINHAS VERTICAIS DINÂMICAS (Apenas as 6 configuradas)
+            // LINHAS VERTICAIS LENTAS REMANESCENTES
             ctx.globalCompositeOperation = 'difference';
             verticalLines.forEach(line => {
-                line.x += line.speed * (glitchVal * 1.5);
+                line.x += line.speed * (glitchVal * 1.2);
                 if(line.x > canvas.width) line.x = -line.thickness;
                 ctx.fillStyle = line.color;
                 ctx.fillRect(line.x, 0, line.thickness, canvas.height);
             });
             ctx.globalCompositeOperation = 'source-over';
 
-            // SCANS ORGÂNICOS DE CORES
+            // 3. SISTEMA DE FREEZE EXPANDIDO (Tiras + 3 Retângulos Espaçados)
+            frozenSlices = frozenSlices.filter(s => Date.now() < s.expires);
+            if (Math.random() < 0.015 * glitchVal && frozenSlices.length < 3) {
+                let sy = Math.random() * canvas.height; let sh = 25 + Math.random() * 80;
+                let sCanvas = document.createElement('canvas'); sCanvas.width = canvas.width; sCanvas.height = sh;
+                sCanvas.getContext('2d').drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
+                frozenSlices.push({ y: sy, canvas: sCanvas, expires: Date.now() + (400 + Math.random() * 1200) });
+            }
+            frozenSlices.forEach(s => ctx.drawImage(s.canvas, 0, s.y));
+
+            // Os Três Retângulos Independentes e Mais Espaçados
+            frozenRects = frozenRects.filter(r => Date.now() < r.expires);
+            if (Math.random() < 0.006 * glitchVal && frozenRects.length < 3) {
+                let rw = 120 + Math.random() * 300;
+                let rh = 90 + Math.random() * 220;
+                let rx = Math.random() * (canvas.width - rw);
+                let ry = Math.random() * (canvas.height - rh);
+                
+                let rCanvas = document.createElement('canvas'); rCanvas.width = rw; rCanvas.height = rh;
+                rCanvas.getContext('2d').drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
+                
+                frozenRects.push({
+                    x: rx, y: ry, w: rw, h: rh,
+                    canvas: rCanvas,
+                    expires: Date.now() + (1000 + Math.random() * 2000) // Duram entre 1 e 3 segundos
+                });
+            }
+            frozenRects.forEach(r => ctx.drawImage(r.canvas, r.x, r.y));
+
+            // 4. EFEITO DE SATURAÇÃO DE LUZ (Estouro de Sensor)
+            if (Math.random() < 0.08 * glitchVal) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'color-dodge';
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.15 + Math.random() * 0.35})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.restore();
+            }
+
+            // 5. FLASHES COM DURAÇÃO ALEATÓRIA
+            if (Math.random() < 0.012 * glitchVal && Date.now() > flashEndTime) {
+                flashEndTime = Date.now() + (50 + Math.random() * 250); // Duração aleatória (50ms a 300ms)
+                flashColor = Math.random() > 0.6 ? '#FF00FF' : '#FFFFFF';
+            }
+            if (Date.now() < flashEndTime) {
+                ctx.save();
+                ctx.fillStyle = flashColor;
+                ctx.globalAlpha = 0.35;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.restore();
+            }
+
+            // 6. FLASHES DE NOISE PRETO ALEATÓRIO (Manchas Desfocadas/Espalhadas)
+            if (Math.random() < 0.02 * glitchVal && Date.now() > blackNoiseEndTime) {
+                blackNoiseEndTime = Date.now() + (80 + Math.random() * 350);
+            }
+            if (Date.now() < blackNoiseEndTime) {
+                ctx.fillStyle = '#000000';
+                let dots = 400 + Math.random() * 800;
+                for (let d = 0; d < dots; d++) {
+                    let nx = Math.random() * canvas.width;
+                    let ny = Math.random() * canvas.height;
+                    let size = 2 + Math.floor(Math.random() * 5);
+                    ctx.fillRect(nx, ny, size, size);
+                }
+            }
+
+            // SCANS ORGÂNICOS COLORIDOS SECUNDÁRIOS
             organicScanTimer++;
-            if(Math.random() < 0.15 * glitchVal && organicScanTimer > 10) {
+            if(Math.random() < 0.1 * glitchVal && organicScanTimer > 15) {
                 let scanColor = randomColor();
                 if(scanColor !== '#FFFFFF') {
-                    ctx.fillStyle = scanColor;
-                    ctx.globalAlpha = 0.4 * glitchVal;
-                    ctx.beginPath();
-                    ctx.ellipse(Math.random() * canvas.width, Math.random() * canvas.height, 100 + Math.random() * 300, 100 + Math.random() * 400, Math.random()*Math.PI, 0, 2 * Math.PI);
-                    ctx.fill();
-                    ctx.globalAlpha = 1.0;
+                    ctx.fillStyle = scanColor; ctx.globalAlpha = 0.35 * glitchVal; ctx.beginPath();
+                    ctx.ellipse(Math.random() * canvas.width, Math.random() * canvas.height, 80 + Math.random() * 250, 80 + Math.random() * 250, Math.random()*Math.PI, 0, 2 * Math.PI);
+                    ctx.fill(); ctx.globalAlpha = 1.0;
                 }
                 organicScanTimer = 0;
             }
 
-            // PÍXEIS MORTOS E DESLOCADOS
-            for(let p = 0; p < 300 * glitchVal; p++) {
-                ctx.fillStyle = Math.random() > 0.8 ? randomColor() : '#000';
-                ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 2, 2);
-            }
-            if (Math.random() < 0.6 * glitchVal) {
-                let sx = Math.random() * canvas.width; let sy = Math.random() * canvas.height; let dim = 50 + Math.random() * 150;
-                ctx.globalCompositeOperation = 'lighter';
-                ctx.drawImage(canvas, sx, sy, dim, dim, sx + (Math.random()-0.5)*80, sy + (Math.random()-0.5)*80, dim, dim);
-                ctx.globalCompositeOperation = 'source-over';
-            }
-
-            // SCAN LARGURA VHS
-            scanY += 18 + (Math.random() * 25);
-            if (scanY > canvas.height) scanY = 0;
-            if (glitchVal > 0.1) {
-                ctx.globalCompositeOperation = 'exclusion';
-                ctx.drawImage(canvas, 0, scanY, canvas.width, 60, (Math.random()-0.5)*30, scanY, canvas.width, 60);
-                ctx.globalCompositeOperation = 'source-over';
-            }
-
-            // BLOCOS DE NOISE DINÂMICO
-            if (Math.random() < 0.25 * glitchVal) {
-                let rw = 80 + Math.random() * 200; let rh = 80 + Math.random() * 120; let rx = Math.random() * canvas.width; let ry = Math.random() * canvas.height;
+            // BLOCOS DE NOISE DINÂMICO ADICIONAIS
+            if (Math.random() < 0.2 * glitchVal) {
+                let rw = 60 + Math.random() * 150; let rh = 60 + Math.random() * 100; let rx = Math.random() * canvas.width; let ry = Math.random() * canvas.height;
                 ctx.drawImage(canvas, rx, ry, rw, rh, Math.random() * canvas.width, Math.random() * canvas.height, rw, rh);
                 ctx.fillStyle = randomColor(); ctx.globalCompositeOperation = 'overlay'; ctx.fillRect(rx, ry, rw, rh); ctx.globalCompositeOperation = 'source-over';
             }
 
-            // EFEITO DE FREEZE EM FATIAS (Adicionado)
-            // Filtra e remove fatias cujo tempo de congelamento expirou
-            frozenSlices = frozenSlices.filter(slice => Date.now() < slice.expires);
-
-            // Gera uma nova fatia congelada com base na intensidade do erro
-            if (Math.random() < 0.018 * glitchVal && frozenSlices.length < 4) {
-                let sy = Math.random() * canvas.height;
-                let sh = 30 + Math.random() * 130; // Altura aleatória da fatia
-                
-                // Cria um canvas em memória invisível para reter os pixeis estáticos daquele milissegundo
-                let sliceCanvas = document.createElement('canvas');
-                sliceCanvas.width = canvas.width;
-                sliceCanvas.height = sh;
-                let sliceCtx = sliceCanvas.getContext('2d');
-                sliceCtx.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
-                
-                frozenSlices.push({
-                    y: sy,
-                    canvas: sliceCanvas,
-                    expires: Date.now() + (500 + Math.random() * 2000) // Congela entre 0.5s e 2.5s
-                });
-            }
-
-            // Desenha as fatias estáticas por cima do feed em tempo real antes do output final
-            frozenSlices.forEach(slice => {
-                ctx.drawImage(slice.canvas, 0, slice.y);
-            });
-
-            // GRÃO E VHS LINES
+            // GRÃO E VHS LINES GLOBAIS
             if (grainVal > 0) {
-                ctx.fillStyle = `rgba(255, 255, 255, ${grainVal * 0.15})`;
-                for (let i = 0; i < 80; i++) { ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 2, 2); }
+                ctx.fillStyle = `rgba(255, 255, 255, ${grainVal * 0.12})`;
+                for (let i = 0; i < 60; i++) { ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 2, 2); }
             }
             if (vhsVal > 0) {
-                ctx.fillStyle = `rgba(0, 0, 0, ${vhsVal * 0.25})`;
-                for (let y = 0; y < canvas.height; y += 3) { ctx.fillRect(0, y, canvas.width, 1); }
+                ctx.fillStyle = `rgba(0, 0, 0, ${vhsVal * 0.22})`;
+                for (let y = 0; y < canvas.height; y += 4) { ctx.fillRect(0, y, canvas.width, 1); }
             }
 
             requestAnimationFrame(applyGlitch);
