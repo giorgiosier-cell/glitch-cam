@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Glitch Cam Pro - Hallucination</title>
+    <title>Glitch Cam Pro - Hallucination V2</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
         body { background-color: #000; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
@@ -21,20 +21,16 @@
 
         .bottom-bar { display: flex; flex-direction: column; align-items: center; pointer-events: auto; padding-bottom: 20px; }
         
-        /* Controlos de Layers (Substitui o Carrossel) */
         .layer-controls { display: flex; gap: 15px; margin-bottom: 25px; }
         .layer-btn { width: 60px; height: 60px; border-radius: 10px; border: 2px solid rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; text-transform: uppercase; cursor: pointer; transition: 0.2s; text-shadow: 1px 1px 2px #000; background: rgba(0,0,0,0.4); color: #888; text-align: center; }
         .layer-btn.active { border-color: #0f0; color: #0f0; background: rgba(0, 255, 0, 0.1); box-shadow: 0 0 10px rgba(0,255,0,0.3); }
 
-        /* Obturador */
         .shutter-btn { width: 70px; height: 70px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: center; cursor: pointer; }
         .shutter-btn-inner { width: 50px; height: 50px; border-radius: 50%; background: #fff; transition: 0.1s; }
         .shutter-btn:active .shutter-btn-inner { transform: scale(0.9); background: #ddd; }
         
-        /* Feedback visual ao tirar foto */
         #flash { position: absolute; top:0; left:0; width: 100%; height: 100%; background: white; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.1s; }
 
-        /* Settings */
         #settingsPanel { position: absolute; top: 0; right: -100%; width: 250px; height: 100%; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 50; transition: right 0.3s ease; padding: 20px; pointer-events: auto; }
         #settingsPanel.open { right: 0; }
         .settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 10px; }
@@ -77,9 +73,9 @@
             <h3>Definições</h3>
             <button id="closeSettings">✕</button>
         </div>
-        <div class="slider-group"><label>Intensidade Total</label><input type="range" id="glitchSlider" min="0" max="100" value="70"></div>
-        <div class="slider-group"><label>Grão Anos 30</label><input type="range" id="grainSlider" min="0" max="100" value="30"></div>
-        <div class="slider-group"><label>VHS Lines</label><input type="range" id="vhsSlider" min="0" max="100" value="50"></div>
+        <div class="slider-group"><label>Intensidade Total</label><input type="range" id="glitchSlider" min="0" max="100" value="80"></div>
+        <div class="slider-group"><label>Grão Anos 30</label><input type="range" id="grainSlider" min="0" max="100" value="40"></div>
+        <div class="slider-group"><label>VHS Lines</label><input type="range" id="vhsSlider" min="0" max="100" value="60"></div>
     </div>
 
     <script>
@@ -87,7 +83,6 @@
         const canvas = document.getElementById('glitchCanvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         
-        // Elementos da UI
         const startBtn = document.getElementById('startBtn');
         const startScreen = document.getElementById('startScreen');
         const uiLayer = document.getElementById('uiLayer');
@@ -95,12 +90,10 @@
         const flashScreen = document.getElementById('flash');
         const settingsPanel = document.getElementById('settingsPanel');
         
-        // Estado das Layers
         let layers = { rgb: true, toxic: true, tear: true };
-        
-        // Variáveis de Animação
         let scanY = 0;
-        let scanHeight = 20;
+        let organicScanTimer = 0;
+        let verticalLines = [];
 
         document.getElementById('settingsBtn').addEventListener('click', () => settingsPanel.classList.add('open'));
         document.getElementById('closeSettings').addEventListener('click', () => settingsPanel.classList.remove('open'));
@@ -134,19 +127,26 @@
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            // Reiniciar linhas verticais ao redimensionar
+            verticalLines = [];
+            for(let i=0; i<20; i++) {
+                let thickness = Math.random() * 30 + 1;
+                verticalLines.push({
+                    x: Math.random() * canvas.width,
+                    thickness: thickness,
+                    speed: 20 / thickness, // Mais espessa = mais lenta
+                    color: randomColor()
+                });
+            }
         }
         window.addEventListener('resize', resizeCanvas);
 
-        // GRAVAR FOTOGRAFIA
         shutterBtn.addEventListener('click', () => {
-            // Efeito de Flash
             flashScreen.style.opacity = 1;
             setTimeout(() => { flashScreen.style.opacity = 0; }, 150);
-
-            // Exportar o canvas atual como imagem
             const dataURL = canvas.toDataURL('image/jpeg', 0.9);
             const link = document.createElement('a');
-            link.download = `glitch_${Date.now()}.jpg`;
+            link.download = `glitch_hallucination_${Date.now()}.jpg`;
             link.href = dataURL;
             link.click();
         });
@@ -158,9 +158,8 @@
             ctx.drawImage(video, x, y, video.videoWidth * scale, video.videoHeight * scale);
         }
 
-        // FUNÇÕES HALLUCINOGÉNICAS
         function randomColor() {
-            const colors = ['#FF00FF', '#00FFFF', '#00FF00', '#FF0000', '#0000FF', '#FFFFFF'];
+            const colors = ['#00FF00', '#00FFFF', '#FF0000', '#0000FF', '#FFFFFF', '#FFFF00']; // Mais foco em G, B, R puro
             return colors[Math.floor(Math.random() * colors.length)];
         }
 
@@ -169,113 +168,118 @@
             let grainVal = document.getElementById('grainSlider').value / 100;
             let vhsVal = document.getElementById('vhsSlider').value / 100;
 
-            // 6. FEEDBACK LOOP (Repetição da forma da imagem)
-            // Desenhamos o vídeo ligeiramente por cima do frame anterior com transparência, ou escalamos o fundo
-            ctx.globalAlpha = 0.9; 
-            if (Math.random() > 0.8) {
-                // Zoom ocasional no frame antigo
-                ctx.drawImage(canvas, -5, -5, canvas.width + 10, canvas.height + 10);
+            // FEEDBACK LOOP
+            ctx.globalAlpha = 0.85; 
+            if (Math.random() > 0.75) {
+                ctx.drawImage(canvas, -8, -8, canvas.width + 16, canvas.height + 16);
             }
             ctx.globalAlpha = 1.0;
             
-            // Se o toxic ou feedback não cobrirem, redesenhamos o vídeo para não borrar infinitamente
-            if (Math.random() > 0.3) {
+            if (Math.random() > 0.25) {
                 drawVideoCover();
             }
 
-            // MANIPULAÇÃO DE PIXEIS BÁSICOS (RGB e TOXIC)
+            // PIXEL MANIPULATION (RGB e TOXIC)
             if (layers.rgb || layers.toxic) {
                 let frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 let data = frameData.data;
 
-                // 1. RGB SHIFT BASE
+                // 1. RGB SHIFT
                 if (layers.rgb) {
-                    let shiftAmount = Math.floor(glitchVal * 30) * 4;
-                    for (let i = 0; i < data.length; i += 16) { // saltamos pixeis para performance
+                    let shiftAmount = Math.floor(glitchVal * 40) * 4;
+                    for (let i = 0; i < data.length; i += 12) { 
                         if (i + shiftAmount < data.length) {
-                            data[i] = data[i + shiftAmount]; // Desloca canal R
+                            data[i] = data[i + shiftAmount];
                         }
                     }
                 } 
                 
-                // 2. TOXIC CORRUPTION
+                // 2. TOXIC CORRUPTION - Ajustado para menos rosa
                 if (layers.toxic) {
-                    for (let i = 0; i < data.length; i += 8) { // Salto para performance
-                        data[i] = Math.min(255, data[i] * 1.5); 
-                        data[i + 1] = 255 - data[i + 1]; 
-                        data[i + 2] = (data[i + 2] + 100) % 255;
+                    for (let i = 0; i < data.length; i += 4) {
+                        data[i] = (data[i] + (data[i + 1] * glitchVal)) % 255; // R influenciado por G
+                        data[i + 1] = 255 - data[i + 1]; // Inverter G
+                        data[i + 2] = (data[i + 2] * 1.8) % 255; // Intensificar B
                     }
                 }
                 ctx.putImageData(frameData, 0, 0);
             }
 
-            // MODO TEAR (FRAGMENTAÇÃO BASE)
+            // TEAR FRAG
             if (layers.tear && glitchVal > 0) {
-                const numSlices = Math.floor(Math.random() * 15 * glitchVal);
+                const numSlices = Math.floor(Math.random() * 25 * glitchVal);
                 for (let i = 0; i < numSlices; i++) {
                     const sliceY = Math.random() * canvas.height;
-                    const sliceHeight = Math.random() * 30;
-                    const xOffset = (Math.random() - 0.5) * 100 * glitchVal;
+                    const sliceHeight = Math.random() * 40;
+                    const xOffset = (Math.random() - 0.5) * 150 * glitchVal;
                     ctx.drawImage(canvas, 0, sliceY, canvas.width, sliceHeight, xOffset, sliceY, canvas.width, sliceHeight);
                 }
             }
 
-            // NOVOS EFEITOS ALUCINOGÉNICOS (Independentes dos toggles, movidos pelo glitchVal)
+            // ALUCINAÇÕES V2
             
-            // 1. Flashes espontâneos verticais
-            if (Math.random() < 0.1 * glitchVal) {
-                ctx.fillStyle = Math.random() > 0.5 ? '#fff' : '#ff00ff';
-                ctx.globalCompositeOperation = 'difference';
-                ctx.fillRect(Math.random() * canvas.width, 0, Math.random() * 100, canvas.height);
-                ctx.globalCompositeOperation = 'source-over';
+            // 1. Mais Linhas Verticais Dinâmicas (Espessas = Lentas)
+            ctx.globalCompositeOperation = 'difference';
+            verticalLines.forEach(line => {
+                line.x += line.speed * (glitchVal * 2);
+                if(line.x > canvas.width) line.x = -line.thickness;
+                
+                ctx.fillStyle = line.color;
+                ctx.fillRect(line.x, 0, line.thickness, canvas.height);
+            });
+            ctx.globalCompositeOperation = 'source-over';
+
+            // 2. Scans Orgânicos de Cores (G, B, R)
+            organicScanTimer++;
+            if(Math.random() < 0.15 * glitchVal && organicScanTimer > 10) {
+                let scanColor = randomColor();
+                if(scanColor !== '#FFFFFF') { // Evitar scans brancos orgânicos
+                    ctx.fillStyle = scanColor;
+                    ctx.globalAlpha = 0.5 * glitchVal;
+                    ctx.beginPath();
+                    let rx = Math.random() * canvas.width;
+                    let ry = Math.random() * canvas.height;
+                    let rw = 100 + Math.random() * 300;
+                    let rh = 100 + Math.random() * 400;
+                    ctx.ellipse(rx, ry, rw, rh, Math.random()*Math.PI, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+                organicScanTimer = 0;
             }
 
-            // 2. Píxeis Mortos
-            ctx.fillStyle = '#000';
-            for(let p = 0; p < 100 * glitchVal; p++) {
-                if(Math.random() > 0.9) ctx.fillStyle = randomColor();
+            // 3. Mais Píxeis Mortos (Pretos e Coloridos)
+            for(let p = 0; p < 300 * glitchVal; p++) {
+                ctx.fillStyle = Math.random() > 0.8 ? randomColor() : '#000';
                 ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 2, 2);
             }
 
-            // 3. Linhas verticais cruzadas
-            if (Math.random() < 0.3 * glitchVal) {
-                ctx.fillStyle = randomColor();
-                ctx.globalCompositeOperation = 'color-dodge';
-                for(let l = 0; l < 5; l++) {
-                    ctx.fillRect(Math.random() * canvas.width, 0, 1 + Math.random() * 3, canvas.height);
-                }
-                ctx.globalCompositeOperation = 'source-over';
-            }
-
-            // 4. Scan aleatório de cima para baixo
-            scanY += 15 + (Math.random() * 20);
-            if (scanY > canvas.height) scanY = 0;
-            if (glitchVal > 0.2) {
-                ctx.globalCompositeOperation = 'exclusion';
-                ctx.drawImage(canvas, 0, scanY, canvas.width, 50, (Math.random()-0.5)*20, scanY, canvas.width, 50);
-                ctx.globalCompositeOperation = 'source-over';
-            }
-
-            // 5. Píxeis RGB deslocados flutuantes
-            if (Math.random() < 0.4 * glitchVal) {
+            // 4. Mais Grupos de Píxeis Deslocados
+            if (Math.random() < 0.6 * glitchVal) {
                 let sx = Math.random() * canvas.width;
                 let sy = Math.random() * canvas.height;
+                let dim = 50 + Math.random() * 150;
                 ctx.globalCompositeOperation = 'lighter';
-                ctx.drawImage(canvas, sx, sy, 100, 100, sx + (Math.random()-0.5)*40, sy + (Math.random()-0.5)*40, 100, 100);
+                ctx.drawImage(canvas, sx, sy, dim, dim, sx + (Math.random()-0.5)*80, sy + (Math.random()-0.5)*80, dim, dim);
                 ctx.globalCompositeOperation = 'source-over';
             }
 
-            // 7. Retângulos copiados com noise/cor dinâmica
-            if (Math.random() < 0.2 * glitchVal) {
-                let rw = 50 + Math.random() * 150;
-                let rh = 50 + Math.random() * 100;
+            // 5. Scan Aleatório de Linha (VHS/TV)
+            scanY += 18 + (Math.random() * 25);
+            if (scanY > canvas.height) scanY = 0;
+            if (glitchVal > 0.1) {
+                ctx.globalCompositeOperation = 'exclusion';
+                ctx.drawImage(canvas, 0, scanY, canvas.width, 60, (Math.random()-0.5)*30, scanY, canvas.width, 60);
+                ctx.globalCompositeOperation = 'source-over';
+            }
+
+            // 6. Retângulos com Noise Dinâmico Berrante
+            if (Math.random() < 0.25 * glitchVal) {
+                let rw = 80 + Math.random() * 200;
+                let rh = 80 + Math.random() * 120;
                 let rx = Math.random() * canvas.width;
                 let ry = Math.random() * canvas.height;
-                
-                // Desenhar parte da imagem noutro lugar
                 ctx.drawImage(canvas, rx, ry, rw, rh, Math.random() * canvas.width, Math.random() * canvas.height, rw, rh);
-                
-                // Desenhar ruído berrante por cima dessa mesma área copiada
                 ctx.fillStyle = randomColor();
                 ctx.globalCompositeOperation = 'overlay';
                 ctx.fillRect(rx, ry, rw, rh);
@@ -284,15 +288,14 @@
 
             // GRÃO E VHS
             if (grainVal > 0) {
-                ctx.fillStyle = `rgba(255, 255, 255, ${grainVal * 0.1})`;
-                for (let i = 0; i < 50; i++) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${grainVal * 0.15})`;
+                for (let i = 0; i < 80; i++) {
                     ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 2, 2);
                 }
             }
-
             if (vhsVal > 0) {
-                ctx.fillStyle = `rgba(0, 0, 0, ${vhsVal * 0.2})`;
-                for (let y = 0; y < canvas.height; y += 4) {
+                ctx.fillStyle = `rgba(0, 0, 0, ${vhsVal * 0.25})`;
+                for (let y = 0; y < canvas.height; y += 3) {
                     ctx.fillRect(0, y, canvas.width, 1);
                 }
             }
