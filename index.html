@@ -92,15 +92,13 @@
         const settingsPanel = document.getElementById('settingsPanel');
         
         let layers = { rgb: true, toxic: true, tear: true };
-        let organicScanTimer = 0;
         let verticalLines = [];
         
-        // BUFFER OFFSCREEN PARA DATAMOSHING / INTERFRAME COMPRESSION
+        // BUFFER OFFSCREEN PARA DATAMOSHING / ARRASTADO CONTÍNUO
         let moshCanvas = document.createElement('canvas');
-        let moshCtx = moshCanvas.getContext('2d');
+        let moshCtx = moshCanvas.getContext('2d', { willReadFrequently: true });
         let isMoshing = false;
         let moshEndTime = 0;
-        let activeMoshBlocks = [];
 
         // Timers de Flashes
         let flashEndTime = 0;
@@ -186,73 +184,50 @@
             // 1. DESENHAR O FEED DE VÍDEO EM DIRETO
             drawVideoCover();
 
-            // 2. SISTEMA DE DATAMOSHING / CORRUPÇÃO DE MACROBLOCOS INTERFRAME
-            if (!isMoshing && Math.random() < 0.03 * glitchVal) {
+            // 2. DATAMOSHING COM MICRO-BLOCOS UNIFORMES E ARRASTADO CONTÍNUO (SMEARING)
+            if (!isMoshing && Math.random() < 0.025 * glitchVal) {
                 isMoshing = true;
-                moshEndTime = Date.now() + (400 + Math.random() * 2100); // Duração entre 0.4s e 2.5s
-                
-                // Congelar o frame atual no buffer moshCanvas
-                moshCtx.drawImage(canvas, 0, 0);
-                
-                // Gerar mapa de macroblocos corrompidos
-                activeMoshBlocks = [];
-                let blockSize = 16 + Math.floor(Math.random() * 3) * 16; // Blocos de 16px, 32px ou 48px
-                let cols = Math.ceil(canvas.width / blockSize);
-                let rows = Math.ceil(canvas.height / blockSize);
-                
-                let freezeDensity = 0.35 + Math.random() * 0.45; // 35% a 80% do ecrã entra em congelamento parcial
-                for (let r = 0; r < rows; r++) {
-                    for (let c = 0; c < cols; c++) {
-                        if (Math.random() < freezeDensity) {
-                            // Deslocamento de vetores de movimento (datamosh smear)
-                            let offsetX = (Math.random() - 0.5) * (Math.random() > 0.4 ? 90 : 0);
-                            let offsetY = (Math.random() - 0.5) * (Math.random() > 0.4 ? 90 : 0);
-                            
-                            activeMoshBlocks.push({
-                                destX: c * blockSize,
-                                destY: r * blockSize,
-                                srcX: c * blockSize + offsetX,
-                                srcY: r * blockSize + offsetY,
-                                w: blockSize,
-                                h: blockSize,
-                                tint: Math.random() > 0.55 ? randomColor() : null
-                            });
-                        }
-                    }
-                }
+                moshEndTime = Date.now() + (500 + Math.random() * 2000); // Duração aleatória
+                moshCtx.drawImage(canvas, 0, 0); // Captura o estado atual para o buffer de memória
             }
 
             if (isMoshing) {
                 if (Date.now() > moshEndTime) {
                     isMoshing = false;
                 } else {
-                    // Sobrepor os macroblocos congelados/deslocados do passado sobre o vídeo live
                     ctx.save();
-                    activeMoshBlocks.forEach(b => {
-                        ctx.drawImage(moshCanvas, b.srcX, b.srcY, b.w, b.h, b.destX, b.destY, b.w, b.h);
-                        
-                        // Fusão cromática saturada nas margens dos blocos (como nas fotos de referência)
-                        if (b.tint) {
-                            ctx.fillStyle = b.tint;
-                            ctx.globalCompositeOperation = 'color-burn';
-                            ctx.globalAlpha = 0.45;
-                            ctx.fillRect(b.destX, b.destY, b.w, b.h);
-                            ctx.globalCompositeOperation = 'source-over';
-                            ctx.globalAlpha = 1.0;
+                    // Tamanho dos píxeis estritamente fixo e super pequeno (6x6)
+                    const blockSize = 6; 
+                    
+                    // Aplicar smear contínuo quadro a quadro usando micro-blocos em grelha fixa
+                    for (let y = 0; y < canvas.height; y += blockSize) {
+                        for (let x = 0; x < canvas.width; x += blockSize) {
+                            if (Math.random() < 0.55) { // Densidade alta de corrupção
+                                // Vetores de arrastado direcional aleatório
+                                let dx = (Math.random() - 0.5) * 16;
+                                let dy = (Math.random() - 0.5) * 16;
+                                
+                                ctx.drawImage(moshCanvas, x, y, blockSize, blockSize, x + dx, y + dy, blockSize, blockSize);
+                            }
                         }
-                    });
+                    }
+
+                    // Camada de sobreposição e saturação cromática profunda idêntica às referências
+                    if (Math.random() < 0.4) {
+                        ctx.fillStyle = randomColor();
+                        ctx.globalCompositeOverlay = 'overlay';
+                        ctx.globalAlpha = 0.2;
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    }
+
                     ctx.restore();
 
-                    // Efeito de cascata: o buffer mosh atrai fragmentos do live feed gradualmente
-                    if (Math.random() < 0.25) {
-                        moshCtx.globalAlpha = 0.3;
-                        moshCtx.drawImage(canvas, 0, 0);
-                        moshCtx.globalAlpha = 1.0;
-                    }
+                    // Atualizar o buffer de memória continuamente para criar o trilho de arrastado (*smear trail*)
+                    moshCtx.drawImage(canvas, 0, 0);
                 }
             } else {
-                // Atualizar o buffer de memória esporadicamente enquanto não há glitch
-                if (Math.random() < 0.15) {
+                // Manter o buffer sincronizado em fundo
+                if (Math.random() < 0.2) {
                     moshCtx.drawImage(canvas, 0, 0);
                 }
             }
