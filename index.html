@@ -73,7 +73,7 @@
             <h3>Definições</h3>
             <button id="closeSettings">✕</button>
         </div>
-        <div class="slider-group"><label>Intensidade Total</label><input type="range" id="glitchSlider" min="0" max="100" value="80"></div>
+        <div class="slider-group"><label>Intensidade Total</label><input type="range" id="glitchSlider" min="0" max="100" value="85"></div>
         <div class="slider-group"><label>Posterizar</label><input type="range" id="posterizeSlider" min="0" max="100" value="35"></div>
         <div class="slider-group"><label>Grão Anos 30</label><input type="range" id="grainSlider" min="0" max="100" value="30"></div>
         <div class="slider-group"><label>VHS Lines</label><input type="range" id="vhsSlider" min="0" max="100" value="40"></div>
@@ -92,18 +92,19 @@
         const settingsPanel = document.getElementById('settingsPanel');
         
         let layers = { rgb: true, toxic: true, tear: true };
-        let scanY = 0;
         let organicScanTimer = 0;
         let verticalLines = [];
         
-        // Sistemas de Freeze Expandidos
-        let frozenSlices = []; 
-        let frozenRects = []; 
+        // BUFFER OFFSCREEN PARA DATAMOSHING / INTERFRAME COMPRESSION
+        let moshCanvas = document.createElement('canvas');
+        let moshCtx = moshCanvas.getContext('2d');
+        let isMoshing = false;
+        let moshEndTime = 0;
+        let activeMoshBlocks = [];
 
-        // Timers e controlos de efeitos aleatórios
+        // Timers de Flashes
         let flashEndTime = 0;
         let flashColor = '#fff';
-        let compressionEndTime = 0; // Controlo do artefacto de compressão interframe
 
         document.getElementById('settingsBtn').addEventListener('click', () => settingsPanel.classList.add('open'));
         document.getElementById('closeSettings').addEventListener('click', () => settingsPanel.classList.remove('open'));
@@ -138,6 +139,9 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             
+            moshCanvas.width = canvas.width;
+            moshCanvas.height = canvas.height;
+            
             verticalLines = [];
             for(let i=0; i<4; i++) {
                 let thickness = Math.random() * 40 + 10;
@@ -169,7 +173,7 @@
         }
 
         function randomColor() {
-            const colors = ['#00FF00', '#FF00FF', '#00FFFF', '#FF0000', '#0000FF', '#FFFF00'];
+            const colors = ['#00FF00', '#FF00FF', '#00FFFF', '#FF0000', '#FFFF00', '#0000FF'];
             return colors[Math.floor(Math.random() * colors.length)];
         }
 
@@ -179,24 +183,87 @@
             let grainVal = document.getElementById('grainSlider').value / 100;
             let vhsVal = document.getElementById('vhsSlider').value / 100;
 
-            // FEEDBACK LOOP
-            ctx.globalAlpha = 0.85; 
-            if (Math.random() > 0.75) {
-                ctx.drawImage(canvas, -6, -6, canvas.width + 12, canvas.height + 12);
-            }
-            ctx.globalAlpha = 1.0;
-            
-            if (Math.random() > 0.25) {
-                drawVideoCover();
+            // 1. DESENHAR O FEED DE VÍDEO EM DIRETO
+            drawVideoCover();
+
+            // 2. SISTEMA DE DATAMOSHING / CORRUPÇÃO DE MACROBLOCOS INTERFRAME
+            if (!isMoshing && Math.random() < 0.03 * glitchVal) {
+                isMoshing = true;
+                moshEndTime = Date.now() + (400 + Math.random() * 2100); // Duração entre 0.4s e 2.5s
+                
+                // Congelar o frame atual no buffer moshCanvas
+                moshCtx.drawImage(canvas, 0, 0);
+                
+                // Gerar mapa de macroblocos corrompidos
+                activeMoshBlocks = [];
+                let blockSize = 16 + Math.floor(Math.random() * 3) * 16; // Blocos de 16px, 32px ou 48px
+                let cols = Math.ceil(canvas.width / blockSize);
+                let rows = Math.ceil(canvas.height / blockSize);
+                
+                let freezeDensity = 0.35 + Math.random() * 0.45; // 35% a 80% do ecrã entra em congelamento parcial
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        if (Math.random() < freezeDensity) {
+                            // Deslocamento de vetores de movimento (datamosh smear)
+                            let offsetX = (Math.random() - 0.5) * (Math.random() > 0.4 ? 90 : 0);
+                            let offsetY = (Math.random() - 0.5) * (Math.random() > 0.4 ? 90 : 0);
+                            
+                            activeMoshBlocks.push({
+                                destX: c * blockSize,
+                                destY: r * blockSize,
+                                srcX: c * blockSize + offsetX,
+                                srcY: r * blockSize + offsetY,
+                                w: blockSize,
+                                h: blockSize,
+                                tint: Math.random() > 0.55 ? randomColor() : null
+                            });
+                        }
+                    }
+                }
             }
 
-            // CONTROLO DE PIXEIS (RGB, TOXIC, POSTERIZE)
+            if (isMoshing) {
+                if (Date.now() > moshEndTime) {
+                    isMoshing = false;
+                } else {
+                    // Sobrepor os macroblocos congelados/deslocados do passado sobre o vídeo live
+                    ctx.save();
+                    activeMoshBlocks.forEach(b => {
+                        ctx.drawImage(moshCanvas, b.srcX, b.srcY, b.w, b.h, b.destX, b.destY, b.w, b.h);
+                        
+                        // Fusão cromática saturada nas margens dos blocos (como nas fotos de referência)
+                        if (b.tint) {
+                            ctx.fillStyle = b.tint;
+                            ctx.globalCompositeOperation = 'color-burn';
+                            ctx.globalAlpha = 0.45;
+                            ctx.fillRect(b.destX, b.destY, b.w, b.h);
+                            ctx.globalCompositeOperation = 'source-over';
+                            ctx.globalAlpha = 1.0;
+                        }
+                    });
+                    ctx.restore();
+
+                    // Efeito de cascata: o buffer mosh atrai fragmentos do live feed gradualmente
+                    if (Math.random() < 0.25) {
+                        moshCtx.globalAlpha = 0.3;
+                        moshCtx.drawImage(canvas, 0, 0);
+                        moshCtx.globalAlpha = 1.0;
+                    }
+                }
+            } else {
+                // Atualizar o buffer de memória esporadicamente enquanto não há glitch
+                if (Math.random() < 0.15) {
+                    moshCtx.drawImage(canvas, 0, 0);
+                }
+            }
+
+            // 3. PROCESSAMENTO DE PIXEIS (RGB SHIFT, TOXIC COLOR, POSTERIZE)
             if (layers.rgb || layers.toxic || posterizeVal > 0) {
                 let frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 let data = frameData.data;
 
                 if (layers.rgb) {
-                    let shiftAmount = Math.floor(glitchVal * 35) * 4;
+                    let shiftAmount = Math.floor(glitchVal * 30) * 4;
                     for (let i = 0; i < data.length; i += 12) { 
                         if (i + shiftAmount < data.length) data[i] = data[i + shiftAmount];
                     }
@@ -205,7 +272,7 @@
                     for (let i = 0; i < data.length; i += 4) {
                         data[i] = (data[i] + (data[i + 1] * glitchVal)) % 255; 
                         data[i + 1] = 255 - data[i + 1]; 
-                        data[i + 2] = (data[i + 2] * 1.6) % 255; 
+                        data[i + 2] = (data[i + 2] * 1.5) % 255; 
                     }
                 }
                 if (posterizeVal > 0) {
@@ -219,27 +286,18 @@
                 ctx.putImageData(frameData, 0, 0);
             }
 
-            // LINHAS DE PIXEIS PRETOS NA HORIZONTAL
-            if (Math.random() < 0.4 * glitchVal) {
-                ctx.fillStyle = '#000000';
-                let numLines = Math.floor(2 + Math.random() * 6);
-                for(let l=0; l<numLines; l++) {
-                    ctx.fillRect(0, Math.random() * canvas.height, canvas.width, 1 + Math.floor(Math.random() * 3));
-                }
-            }
-
-            // TEAR FRAG DE FORMA BASE
+            // 4. LINHAS DE TEAR FRAG HORIZONTAIS
             if (layers.tear && glitchVal > 0) {
-                const numSlices = Math.floor(Math.random() * 15 * glitchVal);
+                const numSlices = Math.floor(Math.random() * 12 * glitchVal);
                 for (let i = 0; i < numSlices; i++) {
                     const sliceY = Math.random() * canvas.height;
-                    const sliceHeight = Math.random() * 30;
-                    const xOffset = (Math.random() - 0.5) * 120 * glitchVal;
+                    const sliceHeight = Math.random() * 25;
+                    const xOffset = (Math.random() - 0.5) * 100 * glitchVal;
                     ctx.drawImage(canvas, 0, sliceY, canvas.width, sliceHeight, xOffset, sliceY, canvas.width, sliceHeight);
                 }
             }
 
-            // LINHAS VERTICAIS LENTAS REMANESCENTES
+            // 5. LINHAS VERTICAIS LENTAS
             ctx.globalCompositeOperation = 'difference';
             verticalLines.forEach(line => {
                 line.x += line.speed * (glitchVal * 1.2);
@@ -249,108 +307,20 @@
             });
             ctx.globalCompositeOperation = 'source-over';
 
-            // SISTEMA DE FREEZE (Tiras + 3 Retângulos Espaçados)
-            frozenSlices = frozenSlices.filter(s => Date.now() < s.expires);
-            if (Math.random() < 0.015 * glitchVal && frozenSlices.length < 3) {
-                let sy = Math.random() * canvas.height; let sh = 25 + Math.random() * 80;
-                let sCanvas = document.createElement('canvas'); sCanvas.width = canvas.width; sCanvas.height = sh;
-                sCanvas.getContext('2d').drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
-                frozenSlices.push({ y: sy, canvas: sCanvas, expires: Date.now() + (400 + Math.random() * 1200) });
-            }
-            frozenSlices.forEach(s => ctx.drawImage(s.canvas, 0, s.y));
-
-            frozenRects = frozenRects.filter(r => Date.now() < r.expires);
-            if (Math.random() < 0.006 * glitchVal && frozenRects.length < 3) {
-                let rw = 120 + Math.random() * 300;
-                let rh = 90 + Math.random() * 220;
-                let rx = Math.random() * (canvas.width - rw);
-                let ry = Math.random() * (canvas.height - rh);
-                
-                let rCanvas = document.createElement('canvas'); rCanvas.width = rw; rCanvas.height = rh;
-                rCanvas.getContext('2d').drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
-                
-                frozenRects.push({
-                    x: rx, y: ry, w: rw, h: rh,
-                    canvas: rCanvas,
-                    expires: Date.now() + (1000 + Math.random() * 2000)
-                });
-            }
-            frozenRects.forEach(r => ctx.drawImage(r.canvas, r.x, r.y));
-
-            // NOVO EFEITO: Interframe Compression Artifacts (Macroblowing / Erros de descompressão vídeo)
-            if (Math.random() < 0.02 * glitchVal && Date.now() > compressionEndTime) {
-                compressionEndTime = Date.now() + (150 + Math.random() * 900); // Duração aleatória
-            }
-            if (Date.now() < compressionEndTime) {
-                ctx.save();
-                let blockSize = 16 + Math.floor(Math.random() * 3) * 16; // Blocos de 16, 32 ou 48 pixeis
-                let cols = Math.floor(canvas.width / blockSize);
-                let rows = Math.floor(canvas.height / blockSize);
-                let numBlocks = 12 + Math.floor(Math.random() * 25);
-                
-                for (let b = 0; b < numBlocks; b++) {
-                    let col = Math.floor(Math.random() * cols);
-                    let row = Math.floor(Math.random() * rows);
-                    let bx = col * blockSize;
-                    let by = row * blockSize;
-                    
-                    let offsetX = (Math.random() - 0.5) * 50;
-                    let offsetY = (Math.random() - 0.5) * 50;
-                    
-                    if (bx + offsetX >= 0 && bx + offsetX < canvas.width - blockSize && by + offsetY >= 0 && by + offsetY < canvas.height - blockSize) {
-                        ctx.drawImage(canvas, bx + offsetX, by + offsetY, blockSize, blockSize, bx, by, blockSize, blockSize);
-                    }
-                    
-                    if (Math.random() > 0.5) {
-                        ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0, 255, 0, 0.25)' : 'rgba(255, 0, 255, 0.25)';
-                        ctx.fillRect(bx, by, blockSize, blockSize);
-                    }
-                }
-                ctx.restore();
-            }
-
-            // EFEITO DE SATURAÇÃO DE LUZ (Estouro de Sensor)
-            if (Math.random() < 0.08 * glitchVal) {
-                ctx.save();
-                ctx.globalCompositeOperation = 'color-dodge';
-                ctx.fillStyle = `rgba(255, 255, 255, ${0.15 + Math.random() * 0.35})`;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.restore();
-            }
-
-            // FLASHES COM DURAÇÃO ALEATÓRIA
+            // 6. FLASHES DE LUZ/COR ALEATÓRIOS
             if (Math.random() < 0.012 * glitchVal && Date.now() > flashEndTime) {
-                flashEndTime = Date.now() + (50 + Math.random() * 250); 
+                flashEndTime = Date.now() + (50 + Math.random() * 200); 
                 flashColor = Math.random() > 0.6 ? '#FF00FF' : '#FFFFFF';
             }
             if (Date.now() < flashEndTime) {
                 ctx.save();
                 ctx.fillStyle = flashColor;
-                ctx.globalAlpha = 0.35;
+                ctx.globalAlpha = 0.3;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.restore();
             }
 
-            // SCANS ORGÂNICOS COLORIDOS SECUNDÁRIOS
-            organicScanTimer++;
-            if(Math.random() < 0.1 * glitchVal && organicScanTimer > 15) {
-                let scanColor = randomColor();
-                if(scanColor !== '#FFFFFF') {
-                    ctx.fillStyle = scanColor; ctx.globalAlpha = 0.35 * glitchVal; ctx.beginPath();
-                    ctx.ellipse(Math.random() * canvas.width, Math.random() * canvas.height, 80 + Math.random() * 250, 80 + Math.random() * 250, Math.random()*Math.PI, 0, 2 * Math.PI);
-                    ctx.fill(); ctx.globalAlpha = 1.0;
-                }
-                organicScanTimer = 0;
-            }
-
-            // BLOCOS DE NOISE DINÂMICO ADICIONAIS
-            if (Math.random() < 0.2 * glitchVal) {
-                let rw = 60 + Math.random() * 150; let rh = 60 + Math.random() * 100; let rx = Math.random() * canvas.width; let ry = Math.random() * canvas.height;
-                ctx.drawImage(canvas, rx, ry, rw, rh, Math.random() * canvas.width, Math.random() * canvas.height, rw, rh);
-                ctx.fillStyle = randomColor(); ctx.globalCompositeOperation = 'overlay'; ctx.fillRect(rx, ry, rw, rh); ctx.globalCompositeOperation = 'source-over';
-            }
-
-            // GRÃO E VHS LINES GLOBAIS
+            // 7. GRÃO E VHS LINES GLOBAIS
             if (grainVal > 0) {
                 ctx.fillStyle = `rgba(255, 255, 255, ${grainVal * 0.12})`;
                 for (let i = 0; i < 60; i++) { ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 2, 2); }
