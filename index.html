@@ -93,18 +93,17 @@
         
         let layers = { rgb: true, toxic: true, tear: true };
         let scanY = 0;
-        let dripY = 0; // Controla a descida da trama verde/magenta
         let organicScanTimer = 0;
         let verticalLines = [];
         
         // Sistemas de Freeze Expandidos
         let frozenSlices = []; 
-        let frozenRects = []; // Guarda os 3 retângulos espaçados
+        let frozenRects = []; 
 
-        // Timers de Flashes com duração aleatória
+        // Timers e controlos de efeitos aleatórios
         let flashEndTime = 0;
         let flashColor = '#fff';
-        let blackNoiseEndTime = 0;
+        let compressionEndTime = 0; // Controlo do artefacto de compressão interframe
 
         document.getElementById('settingsBtn').addEventListener('click', () => settingsPanel.classList.add('open'));
         document.getElementById('closeSettings').addEventListener('click', () => settingsPanel.classList.remove('open'));
@@ -139,7 +138,6 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             
-            // Apenas 4 linhas verticais lentas puras
             verticalLines = [];
             for(let i=0; i<4; i++) {
                 let thickness = Math.random() * 40 + 10;
@@ -181,7 +179,7 @@
             let grainVal = document.getElementById('grainSlider').value / 100;
             let vhsVal = document.getElementById('vhsSlider').value / 100;
 
-            // FEEDBACK LOOP CONSTITUINTE
+            // FEEDBACK LOOP
             ctx.globalAlpha = 0.85; 
             if (Math.random() > 0.75) {
                 ctx.drawImage(canvas, -6, -6, canvas.width + 12, canvas.height + 12);
@@ -221,25 +219,7 @@
                 ctx.putImageData(frameData, 0, 0);
             }
 
-            // 1. TRAMA DE PIXEIS ESCORRIDOS MAGENTA E VERDE (Loop Vertical Longo)
-            dripY += 6 + (glitchVal * 10);
-            if (dripY > canvas.height) dripY = -300;
-            
-            if (glitchVal > 0.1) {
-                ctx.save();
-                ctx.globalCompositeOperation = 'screen';
-                ctx.globalAlpha = 0.7 * glitchVal;
-                for (let x = 0; x < canvas.width; x += 6) {
-                    if (Math.sin(x + dripY) > 0.2) { // Cria padrões pseudo-orgânicos em linhas
-                        ctx.fillStyle = Math.random() > 0.5 ? '#FF00FF' : '#00FF00';
-                        let dripHeight = 100 + Math.random() * 250;
-                        ctx.fillRect(x, dripY, 3, dripHeight);
-                    }
-                }
-                ctx.restore();
-            }
-
-            // 2. LINHAS DE PIXEIS PRETOS NA HORIZONTAL
+            // LINHAS DE PIXEIS PRETOS NA HORIZONTAL
             if (Math.random() < 0.4 * glitchVal) {
                 ctx.fillStyle = '#000000';
                 let numLines = Math.floor(2 + Math.random() * 6);
@@ -269,7 +249,7 @@
             });
             ctx.globalCompositeOperation = 'source-over';
 
-            // 3. SISTEMA DE FREEZE EXPANDIDO (Tiras + 3 Retângulos Espaçados)
+            // SISTEMA DE FREEZE (Tiras + 3 Retângulos Espaçados)
             frozenSlices = frozenSlices.filter(s => Date.now() < s.expires);
             if (Math.random() < 0.015 * glitchVal && frozenSlices.length < 3) {
                 let sy = Math.random() * canvas.height; let sh = 25 + Math.random() * 80;
@@ -279,7 +259,6 @@
             }
             frozenSlices.forEach(s => ctx.drawImage(s.canvas, 0, s.y));
 
-            // Os Três Retângulos Independentes e Mais Espaçados
             frozenRects = frozenRects.filter(r => Date.now() < r.expires);
             if (Math.random() < 0.006 * glitchVal && frozenRects.length < 3) {
                 let rw = 120 + Math.random() * 300;
@@ -293,12 +272,44 @@
                 frozenRects.push({
                     x: rx, y: ry, w: rw, h: rh,
                     canvas: rCanvas,
-                    expires: Date.now() + (1000 + Math.random() * 2000) // Duram entre 1 e 3 segundos
+                    expires: Date.now() + (1000 + Math.random() * 2000)
                 });
             }
             frozenRects.forEach(r => ctx.drawImage(r.canvas, r.x, r.y));
 
-            // 4. EFEITO DE SATURAÇÃO DE LUZ (Estouro de Sensor)
+            // NOVO EFEITO: Interframe Compression Artifacts (Macroblowing / Erros de descompressão vídeo)
+            if (Math.random() < 0.02 * glitchVal && Date.now() > compressionEndTime) {
+                compressionEndTime = Date.now() + (150 + Math.random() * 900); // Duração aleatória
+            }
+            if (Date.now() < compressionEndTime) {
+                ctx.save();
+                let blockSize = 16 + Math.floor(Math.random() * 3) * 16; // Blocos de 16, 32 ou 48 pixeis
+                let cols = Math.floor(canvas.width / blockSize);
+                let rows = Math.floor(canvas.height / blockSize);
+                let numBlocks = 12 + Math.floor(Math.random() * 25);
+                
+                for (let b = 0; b < numBlocks; b++) {
+                    let col = Math.floor(Math.random() * cols);
+                    let row = Math.floor(Math.random() * rows);
+                    let bx = col * blockSize;
+                    let by = row * blockSize;
+                    
+                    let offsetX = (Math.random() - 0.5) * 50;
+                    let offsetY = (Math.random() - 0.5) * 50;
+                    
+                    if (bx + offsetX >= 0 && bx + offsetX < canvas.width - blockSize && by + offsetY >= 0 && by + offsetY < canvas.height - blockSize) {
+                        ctx.drawImage(canvas, bx + offsetX, by + offsetY, blockSize, blockSize, bx, by, blockSize, blockSize);
+                    }
+                    
+                    if (Math.random() > 0.5) {
+                        ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0, 255, 0, 0.25)' : 'rgba(255, 0, 255, 0.25)';
+                        ctx.fillRect(bx, by, blockSize, blockSize);
+                    }
+                }
+                ctx.restore();
+            }
+
+            // EFEITO DE SATURAÇÃO DE LUZ (Estouro de Sensor)
             if (Math.random() < 0.08 * glitchVal) {
                 ctx.save();
                 ctx.globalCompositeOperation = 'color-dodge';
@@ -307,9 +318,9 @@
                 ctx.restore();
             }
 
-            // 5. FLASHES COM DURAÇÃO ALEATÓRIA
+            // FLASHES COM DURAÇÃO ALEATÓRIA
             if (Math.random() < 0.012 * glitchVal && Date.now() > flashEndTime) {
-                flashEndTime = Date.now() + (50 + Math.random() * 250); // Duração aleatória (50ms a 300ms)
+                flashEndTime = Date.now() + (50 + Math.random() * 250); 
                 flashColor = Math.random() > 0.6 ? '#FF00FF' : '#FFFFFF';
             }
             if (Date.now() < flashEndTime) {
@@ -318,21 +329,6 @@
                 ctx.globalAlpha = 0.35;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.restore();
-            }
-
-            // 6. FLASHES DE NOISE PRETO ALEATÓRIO (Manchas Desfocadas/Espalhadas)
-            if (Math.random() < 0.02 * glitchVal && Date.now() > blackNoiseEndTime) {
-                blackNoiseEndTime = Date.now() + (80 + Math.random() * 350);
-            }
-            if (Date.now() < blackNoiseEndTime) {
-                ctx.fillStyle = '#000000';
-                let dots = 400 + Math.random() * 800;
-                for (let d = 0; d < dots; d++) {
-                    let nx = Math.random() * canvas.width;
-                    let ny = Math.random() * canvas.height;
-                    let size = 2 + Math.floor(Math.random() * 5);
-                    ctx.fillRect(nx, ny, size, size);
-                }
             }
 
             // SCANS ORGÂNICOS COLORIDOS SECUNDÁRIOS
