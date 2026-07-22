@@ -94,9 +94,10 @@
         let layers = { rgb: true, toxic: true, tear: true };
         let verticalLines = [];
         
-        // BUFFER OFFSCREEN PARA DATAMOSHING / ARRASTADO CONTÍNUO
+        // BUFFER OFFSCREEN PARA DATAMOSHING P-FRAME REAL
         let moshCanvas = document.createElement('canvas');
         let moshCtx = moshCanvas.getContext('2d', { willReadFrequently: true });
+        let moshData = null;
         let isMoshing = false;
         let moshEndTime = 0;
 
@@ -139,6 +140,7 @@
             
             moshCanvas.width = canvas.width;
             moshCanvas.height = canvas.height;
+            moshData = null; // Reinicializar buffer
             
             verticalLines = [];
             for(let i=0; i<4; i++) {
@@ -170,66 +172,94 @@
             ctx.drawImage(video, x, y, video.videoWidth * scale, video.videoHeight * scale);
         }
 
-        function randomColor() {
-            const colors = ['#00FF00', '#FF00FF', '#00FFFF', '#FF0000', '#FFFF00', '#0000FF'];
-            return colors[Math.floor(Math.random() * colors.length)];
-        }
-
         function applyGlitch() {
             let glitchVal = document.getElementById('glitchSlider').value / 100;
             let posterizeVal = document.getElementById('posterizeSlider').value / 100;
             let grainVal = document.getElementById('grainSlider').value / 100;
             let vhsVal = document.getElementById('vhsSlider').value / 100;
 
-            // 1. DESENHAR O FEED DE VÍDEO EM DIRETO
+            // 1. DESENHAR VÍDEO BASE
             drawVideoCover();
 
-            // 2. DATAMOSHING COM MICRO-BLOCOS UNIFORMES E ARRASTADO CONTÍNUO (SMEARING)
-            if (!isMoshing && Math.random() < 0.025 * glitchVal) {
+            // 2. DATAMOSH P-FRAME REAL (GEOGRAFIA FIXA E ADAPTAÇÃO COM MICRO-BLOCOS 6x6)
+            if (!moshData) {
+                moshCtx.drawImage(canvas, 0, 0);
+                moshData = moshCtx.getImageData(0, 0, canvas.width, canvas.height);
+            }
+
+            if (!isMoshing && Math.random() < 0.02 * glitchVal) {
                 isMoshing = true;
-                moshEndTime = Date.now() + (500 + Math.random() * 2000); // Duração aleatória
-                moshCtx.drawImage(canvas, 0, 0); // Captura o estado atual para o buffer de memória
+                moshEndTime = Date.now() + (500 + Math.random() * 2200); // Duração totalmente aleatória
+                moshCtx.drawImage(canvas, 0, 0);
+                moshData = moshCtx.getImageData(0, 0, canvas.width, canvas.height);
             }
 
             if (isMoshing) {
                 if (Date.now() > moshEndTime) {
                     isMoshing = false;
                 } else {
-                    ctx.save();
-                    // Tamanho dos píxeis estritamente fixo e super pequeno (6x6)
-                    const blockSize = 6; 
+                    let liveData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    let livePix = liveData.data;
+                    let moshPix = moshData.data;
                     
-                    // Aplicar smear contínuo quadro a quadro usando micro-blocos em grelha fixa
-                    for (let y = 0; y < canvas.height; y += blockSize) {
-                        for (let x = 0; x < canvas.width; x += blockSize) {
-                            if (Math.random() < 0.55) { // Densidade alta de corrupção
-                                // Vetores de arrastado direcional aleatório
-                                let dx = (Math.random() - 0.5) * 16;
-                                let dy = (Math.random() - 0.5) * 16;
-                                
-                                ctx.drawImage(moshCanvas, x, y, blockSize, blockSize, x + dx, y + dy, blockSize, blockSize);
+                    const blockSize = 6; // Tamanho fixo e super pequeno exigido
+                    const width = canvas.width;
+                    const height = canvas.height;
+
+                    for (let y = 0; y < height; y += blockSize) {
+                        for (let x = 0; x < width; x += blockSize) {
+                            // Calcular diferença do bloco (Deteta movimento da câmara ou objetos)
+                            let diff = 0;
+                            let samples = 0;
+                            for (let sy = 0; sy < blockSize; sy += 3) {
+                                for (let sx = 0; sx < blockSize; sx += 3) {
+                                    let px = x + sx; let py = y + sy;
+                                    if (px < width && py < height) {
+                                        let idx = (py * width + px) * 4;
+                                        diff += (Math.abs(livePix[idx] - moshPix[idx]) + 
+                                                 Math.abs(livePix[idx+1] - moshPix[idx+1]) + 
+                                                 Math.abs(livePix[idx+2] - moshPix[idx+2])) / 3;
+                                        samples++;
+                                    }
+                                }
+                            }
+                            let avgDiff = samples > 0 ? diff / samples : 0;
+
+                            if (avgDiff < 20) {
+                                // Geografia estática: Mantém o frame anterior congelado (fixo)
+                                for (let sy = 0; sy < blockSize; sy++) {
+                                    for (let sx = 0; sx < blockSize; sx++) {
+                                        let px = x + sx; let py = y + sy;
+                                        if (px < width && py < height) {
+                                            let idx = (py * width + px) * 4;
+                                            livePix[idx]   = moshPix[idx];
+                                            livePix[idx+1] = moshPix[idx+1];
+                                            livePix[idx+2] = moshPix[idx+2];
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Movimento / Mudança de câmara: Funde e adapta os novos frames sobre os antigos (smearing/melting)
+                                for (let sy = 0; sy < blockSize; sy++) {
+                                    for (let sx = 0; sx < blockSize; sx++) {
+                                        let px = x + sx; let py = y + sy;
+                                        if (px < width && py < height) {
+                                            let idx = (py * width + px) * 4;
+                                            livePix[idx]   = (livePix[idx] * 0.55 + moshPix[idx] * 0.45);
+                                            livePix[idx+1] = (livePix[idx+1] * 0.55 + moshPix[idx+1] * 0.45);
+                                            livePix[idx+2] = (livePix[idx+2] * 0.55 + moshPix[idx+2] * 0.45);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-
-                    // Camada de sobreposição e saturação cromática profunda idêntica às referências
-                    if (Math.random() < 0.4) {
-                        ctx.fillStyle = randomColor();
-                        ctx.globalCompositeOverlay = 'overlay';
-                        ctx.globalAlpha = 0.2;
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    }
-
-                    ctx.restore();
-
-                    // Atualizar o buffer de memória continuamente para criar o trilho de arrastado (*smear trail*)
-                    moshCtx.drawImage(canvas, 0, 0);
+                    ctx.putImageData(liveData, 0, 0);
                 }
             } else {
-                // Manter o buffer sincronizado em fundo
-                if (Math.random() < 0.2) {
-                    moshCtx.drawImage(canvas, 0, 0);
-                }
+                // Atualizar o buffer de memória continuamente quando o glitch não está ativo
+                moshCtx.drawImage(canvas, 0, 0);
+                moshData = moshCtx.getImageData(0, 0, canvas.width, canvas.height);
             }
 
             // 3. PROCESSAMENTO DE PIXEIS (RGB SHIFT, TOXIC COLOR, POSTERIZE)
